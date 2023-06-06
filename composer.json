@@ -1,0 +1,32 @@
+{
+  "name": "dkm/typo3-fluxmigrate",
+  "type": "typo3-cms-extension",
+  "description": "Tool to help migrate from the TYPO3 extension Flux to a solution closer to core",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "typo3/cms-core": "^10.4 || ^11.5",
+    "symfony/dom-crawler": "5.4.x-dev",
+    "symfony/css-selector": "5.4.x-dev"
+  },
+  "authors": [
+    {
+      "name": "Stig Nørgaard Færch",
+      "role": "Developer",
+      "email": "snf@dkm.dk",
+      "homepage": "dkm.dk"
+    }
+  ],
+  "support": {
+    "issues": "https://github.com/dkmedie/fluxmigrate/issues"
+  },
+  "autoload": {
+    "psr-4": {
+      "DKM\\FluxMigrate\\": "Classes/"
+    }
+  },
+  "extra": {
+    "typo3/cms": {
+      "extension-key": "fluxmigrate"
+    }
+  }
+}

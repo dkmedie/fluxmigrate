@@ -1,0 +1,19 @@
+# Configuration/Services.yaml
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+
+  DKM\FluxMigrate\:
+    resource: '../Classes/*'
+
+  MASK\Mask\Domain\Repository\StorageRepository:
+    public: true
+  DKM\FluxMigrate\Migration\FluxContentElementToMaskMigration:
+    public: true
+
+  DKM\FluxMigrate\Command\MigrateCommand:
+    tags:
+      - name: 'console.command'
+        command: 'fluxmigrate:run'
