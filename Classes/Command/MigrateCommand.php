@@ -4,7 +4,6 @@ namespace DKM\FluxMigrate\Command;
 
 use DKM\FluxMigrate\Migration\FluxContentElementMigrationAbstract;
 use FluidTYPO3\Flux\Core;
-use simplehtmldom\HtmlWeb;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -14,7 +13,6 @@ use Symfony\Component\Yaml\Parser;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Exception;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use voku\helper\HtmlDomParser;
 
 class MigrateCommand extends \Symfony\Component\Console\Command\Command
 {
