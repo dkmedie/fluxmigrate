@@ -6,7 +6,8 @@
   "require": {
     "typo3/cms-core": "^10.4 || ^11.5",
     "symfony/dom-crawler": "5.4.x-dev",
-    "symfony/css-selector": "5.4.x-dev"
+    "symfony/css-selector": "5.4.x-dev",
+    "mask/mask": "^8.1"
   },
   "authors": [
     {
