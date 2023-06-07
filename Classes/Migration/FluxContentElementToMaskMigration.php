@@ -7,6 +7,7 @@ use MASK\Mask\CodeGenerator\SqlCodeGenerator;
 use MASK\Mask\CodeGenerator\TcaCodeGenerator;
 use MASK\Mask\Definition\TableDefinitionCollection;
 use MASK\Mask\Domain\Repository\StorageRepository;
+use MASK\Mask\Loader\LoaderInterface;
 use MASK\Mask\Utility\AffixUtility;
 use TYPO3\CMS\Core\Cache\CacheManager;
 use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
@@ -16,16 +17,20 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class FluxContentElementToMaskMigration extends FluxContentElementMigrationAbstract
 {
+    private LoaderInterface $loader;
+
     private ?StorageRepository $storageRepository = null;
 
     private ?SqlCodeGenerator $sqlCodeGenerator = null;
 
     /**
+     * @param LoaderInterface $loader
      * @param StorageRepository|null $storageRepository
      * @param SqlCodeGenerator|null $sqlCodeGenerator
      */
-    public function __construct(?StorageRepository $storageRepository, ?SqlCodeGenerator $sqlCodeGenerator)
+    public function __construct(LoaderInterface $loader, ?StorageRepository $storageRepository, ?SqlCodeGenerator $sqlCodeGenerator)
     {
+        $this->loader = $loader;
         $this->storageRepository = $storageRepository;
         $this->sqlCodeGenerator = $sqlCodeGenerator;
     }
@@ -66,7 +71,7 @@ class FluxContentElementToMaskMigration extends FluxContentElementMigrationAbstr
     protected function writeConfiguration($configuration)
     {
         $tableDefinitionCollection = $this->storageRepository->update($configuration['element'], $configuration['fields'], $configuration['type'], $configuration['isNew']);
-        $this->generateAction($tableDefinitionCollection);
+        $this->loader->write($tableDefinitionCollection);
     }
 
     /**
@@ -133,34 +138,6 @@ class FluxContentElementToMaskMigration extends FluxContentElementMigrationAbstr
         return "varchar(255) DEFAULT '' NOT NULL";
     }
 
-    /**
-     * Generates all the necessary files
-     */
-    protected function generateAction(TableDefinitionCollection $tableDefinitionCollection): void
-    {
-        // Set TCA to enable DefaultTcaSchema
-        $tcaCodeGenerator = GeneralUtility::makeInstance(TcaCodeGenerator::class);
-        $tcaCodeGenerator->setInlineTca($tableDefinitionCollection);
-        foreach ($tableDefinitionCollection as $tableDefinition) {
-            if (!AffixUtility::hasMaskPrefix($tableDefinition->table)) {
-                $fieldTca = $tcaCodeGenerator->generateFieldsTca($tableDefinition->table);
-                if ($fieldTca === []) {
-                    continue;
-                }
-                ExtensionManagementUtility::addTCAcolumns($tableDefinition->table, $fieldTca);
-            }
-        }
-
-        // Update Database
-        $result = $this->sqlCodeGenerator->updateDatabase();
-        if (array_key_exists('error', $result)) {
-//            $this->addFlashMessage($result['error'], '', AbstractMessage::ERROR);
-        }
-
-        // Clear system cache to force new TCA caching
-        $cacheManager = GeneralUtility::makeInstance(CacheManager::class);
-        $cacheManager->flushCachesInGroup('system');
-    }
 
 
 
