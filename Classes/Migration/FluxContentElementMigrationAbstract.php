@@ -3,6 +3,7 @@
 namespace DKM\FluxMigrate\Migration;
 
 use FluidTYPO3\Flux\Provider\Provider;
+use FluidTYPO3\Flux\Provider\ProviderInterface;
 
 abstract class FluxContentElementMigrationAbstract
 {
@@ -11,11 +12,16 @@ abstract class FluxContentElementMigrationAbstract
 
     protected array $elementConfiguration = [];
 
+    protected string $outputTarget = '';
+
+    protected array $outputProviderSettings = [];
+
     /**
      * @var Provider
      */
-    protected $flexFormProvider;
+    protected Provider $flexFormProvider;
 
+    abstract public function resetFiles();
 
     /**
      * @param $data
@@ -31,6 +37,38 @@ abstract class FluxContentElementMigrationAbstract
     public function getData(): array
     {
         return $this->data;
+    }
+
+    /**
+     * @return string
+     */
+    public function getOutputTarget(): string
+    {
+        return $this->outputTarget;
+    }
+
+    /**
+     * @param string $outputTarget
+     */
+    public function setOutputTarget(string $outputTarget): void
+    {
+        $this->outputTarget = $outputTarget;
+    }
+
+    /**
+     * @return array
+     */
+    public function getOutputProviderSettings(): array
+    {
+        return $this->outputProviderSettings;
+    }
+
+    /**
+     * @param array $outputProviderSettings
+     */
+    public function setOutputProviderSettings(array $outputProviderSettings): void
+    {
+        $this->outputProviderSettings = $outputProviderSettings;
     }
 
     /**
@@ -58,9 +96,9 @@ abstract class FluxContentElementMigrationAbstract
     }
 
     /**
-     * @param Provider $flexFormProvider
+     * @param ProviderInterface $flexFormProvider
      */
-    public function setFlexFormProvider(Provider $flexFormProvider): void
+    public function setFlexFormProvider(ProviderInterface $flexFormProvider): void
     {
         $this->flexFormProvider = $flexFormProvider;
     }
@@ -91,7 +129,7 @@ abstract class FluxContentElementMigrationAbstract
     }
     abstract protected function generateFluidTemplateContent($configuration);
     abstract protected function getFluidTemplatePath();
-    abstract protected function writeFluidTemplate($template);
+    abstract protected function writeFluidTemplate($templateContent);
 
     abstract public function migrateContentElements($configuration);
 

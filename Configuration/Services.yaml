@@ -4,6 +4,8 @@ services:
     autowire: true
     autoconfigure: true
     public: false
+    bind:
+      $maskExtensionConfiguration: '@extensionconfiguration.mask'
 
   DKM\FluxMigrate\:
     resource: '../Classes/*'

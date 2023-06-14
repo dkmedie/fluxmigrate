@@ -3,6 +3,7 @@
 namespace DKM\FluxMigrate\Command;
 
 use DKM\FluxMigrate\Migration\FluxContentElementMigrationAbstract;
+use DKM\FluxMigrate\Utility;
 use FluidTYPO3\Flux\Core;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -39,6 +40,7 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
      * @param InputInterface $input
      * @param OutputInterface $output
      * @return int
+     * @throws Exception
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
@@ -51,7 +53,6 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
 
         $parser = new Parser();
         $this->configuration = $parser->parseFile($cfgFile);
-
 
         $this->io->title($this->getDescription());
         $this->migrateContent();
@@ -70,14 +71,22 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
         foreach (Core::getRegisteredFlexFormProviders() as $flexFormProvider) {
             if(is_object($flexFormProvider)) {
                 $data = $this->getDataFromElement($flexFormProvider->getTemplatePathAndFilename([]));
-                if(!class_exists($this->configuration['output']['name'])) {
-                    throw new Exception("The class {$this->configuration['output']['name']} does not exist!");
+                if($data['type'] ?? false) {
+                    if($className = $this->configuration['output'][$data['type']]['name'] ?? '') {
+                        if(!class_exists($className)) {
+                            throw new Exception("The class {$className} does not exist!");
+                        }
+                        /** @var FluxContentElementMigrationAbstract $outputProvider */
+                        $outputProvider = GeneralUtility::makeInstance($className);
+                        $outputProvider->setData($data);
+                        $outputProvider->setFlexFormProvider($flexFormProvider);
+                        $outputProvider->setOutputProviderSettings($this->configuration['output'][$data['type']]);
+                        $typeResetFiles[$data['type']] = $outputProvider->resetFiles($typeResetFiles[$data['type']] ?? false);
+                        $outputProvider->migrateElement();
+                    } else {
+                        throw new Exception("No class name was configured for the type {$data['type']}!");
+                    }
                 }
-                /** @var FluxContentElementMigrationAbstract $outPutProvider */
-                $outPutProvider = GeneralUtility::makeInstance($this->configuration['output']['name']);
-                $outPutProvider->setData($data);
-                $outPutProvider->setFlexFormProvider($flexFormProvider);
-                $outPutProvider->migrateElement();
             }
         }
     }
@@ -87,38 +96,103 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
      * @param $path
      * @return array
      */
-    protected function getDataFromElement($path)
+    protected function getDataFromElement($path): array
     {
-        $sheets = [];
-        $sections = [];
-        $crawler = new Crawler(file_get_contents($path));
-        $configuration = $crawler->filter('section[name=Configuration] form');
-        $configuration->children()->each(function (Crawler $domElement, $i) use (&$sheets, &$optionGroupName) {
-            switch ($domElement->nodeName()) {
-                case 'form.option.group':
-                    $optionGroupName = $domElement->html();
-                    break;
-                case 'form.sheet':
-                    $sheetName = $domElement->attr('name');
-                    $sheets[$sheetName]['label'] = $domElement->attr('label');
-                    $domElement->children()->each(function (Crawler $node, $i) use ($sheetName, &$sheets) {
-                        $sheets[$sheetName]['fields'][] = $this->getFieldData($node);
-                    });
-                    break;
-                case 'form.section':
-                    $sectionName = $domElement->attr('name');
-                    $sheets[$sectionName]['label'] = $domElement->attr('label');
-                    $domElement->children()->each(function (Crawler $node, $i) use ($sectionName, &$sections) {
-                        $sheets[$sectionName]['fields'][] = $this->getFieldData($node);
-                    });
-                    break;
+        $elementCfg = [];
+        $xml = Utility::convertXMLToNonNamespace(file_get_contents($path));
+        $crawler = new Crawler($xml);
+//        $domDoc = new \DOMDocument("1.0","utf-8");
+//        $domDoc->loadXML($html);
+//        echo $domDoc->saveXML();
+
+
+
+//        libxml_use_internal_errors(true);
+//        $sxe = simplexml_load_string(Utility::sanitizeXMLFromFile($path));
+//        if ($sxe === false) {
+//            echo "Failed loading XML\n";
+//            foreach(libxml_get_errors() as $error) {
+//                echo "\t", $error->message;
+//            }
+//        }
+//
+//
+//        $dom = new \DOMDocument("1.0");
+//        $dom->loadXML(file_get_contents($path));
+//        foreach ($dom->childNodes as $childNode) {
+//            $test = 1;
+//        }
+//        $testOutput = $dom->saveXML();
+        $crawler->filter('div > typo3fluidfluid\.section, typo3fluidfluid\.section:root')->each(function(Crawler $sectionNode, $i) use (&$elementCfg) {
+            $types = [];
+
+            if($sectionNode->attr('name') == 'Configuration') {
+                $formNode = $sectionNode->filter('fluidtypo3flux\.form');
+                $elementCfg['element']['id'] = $formNode->attr('id');
+                $elementCfg['element']['label'] = $formNode->attr('label');
+                $formNode->children()->each(function (Crawler $domElement, $i) use (&$elementCfg, &$types) {
+                    switch ($domElement->nodeName()) {
+                        case 'fluidtypo3flux.form.option.group':
+                            $elementCfg['element']['optionGroup'] = $domElement->html();
+                            break;
+                        case 'fluidtypo3flux.form.sheet':
+                            $sheetName = $domElement->attr('name');
+                            $elementCfg['sheets'][$sheetName]['label'] = $domElement->attr('label');
+                            $domElement->children()->each(function (Crawler $node, $i) use ($sheetName, &$elementCfg) {
+                                $elementCfg['sheets'][$sheetName]['fields'][] = $this->getFieldData($node);
+                            });
+                            $types[] = 'sheets';
+                            break;
+                        case 'fluidtypo3flux.form.section':
+                            $sectionName = $domElement->attr('name');
+                            $elementCfg['sections'][$sectionName]['label'] = $domElement->attr('label');
+                            $domElement->children()->each(function (Crawler $node, $i) use ($sectionName, &$elementCfg) {
+                                $elementCfg['sections'][$sectionName]['fields'][] = $this->getFieldData($node);
+                            });
+                            $types[] = 'sections';
+                            break;
+                        case 'fluidtypo3flux.grid':
+                            $domElement->children('fluidtypo3flux\.grid\.row')->each(function (Crawler $nodeRow, $iRow) use (&$elementCfg) {
+                                $nodeRow->children('fluidtypo3flux\.grid\.column')->each(function (Crawler $nodeColumn, $iColumn) use (&$elementCfg, $iRow) {
+                                    $elementCfg['grid']['rows'][$iRow]['columns'][$iColumn] = [
+                                        'name' => $nodeColumn->attr('name'),
+                                        'colPos' => $nodeColumn->attr('colpos') ?? 0,
+                                        'label' => $nodeColumn->attr('label'),
+                                        'style' => $nodeColumn->attr('style')
+                                    ];
+                                    $elementCfg['grid']['rows'][$iRow]['columns'][$iColumn] = array_filter($elementCfg['grid']['rows'][$iRow]['columns'][$iColumn]);
+                                });
+                            });
+                            $types[] = 'columns';
+                            break;
+                        default:
+                            if (str_starts_with($domElement->nodeName(), 'fluidtypo3flux.field')) {
+                                $elementCfg['sheets']['options']['fields'][] = $this->getFieldData($domElement);
+                            }
+                    }
+                });
+            } else if ($sectionNode->attr('name') == 'Preview') {
+                $elementCfg['templatePreview'] = $sectionNode;
+            } else {
+                $elementCfg['templateSections'][$sectionNode->attr('name')] = $sectionNode;
+            }
+
+            if( in_array('columns', $types)) {
+                $elementCfg['type'] = 'columns';
+            } elseif( in_array('sections', $types)) {
+                $elementCfg['type'] = 'sections';
+            } elseif( in_array('sheets', $types)) {
+                $elementCfg['type'] = 'sheets';
             }
         });
-        return ['element' => ['id' => $configuration->attr('id'),
-            'label' => $configuration->attr('label'),
-            'optionGroup' => $optionGroupName],
-            'sheets' => $sheets,
-            'sections' => $sections];
+
+
+        $crawler->filter('typo3fluidfluid\.section[name=Configuration], typo3fluidfluid\.section[name=Preview]')->each(function(Crawler $node) {
+           $node = $node->getNode(0);
+            $node->parentNode->removeChild($node);
+        });
+        $elementCfg['templateContent'] = Utility::convertXMLToNamespace($crawler->html());
+        return $elementCfg;
     }
 
 
@@ -145,7 +219,7 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
      */
     protected function migratePageTemplateFormSheet(Crawler $crawler) {
         $sheets = [];
-        $elements = $crawler->filter('section form form\.sheet');
+        $elements = $crawler->filter('fluidtypo3flux\.section fluidtypo3flux\.form fluidtypo3flux\.form\.sheet');
         $elements->each(function (Crawler $sheetNode, $i) use (&$sheets) {
             $sheetName = $sheetNode->attr('name');
             $sheetLabel = $sheetNode->attr('label');
