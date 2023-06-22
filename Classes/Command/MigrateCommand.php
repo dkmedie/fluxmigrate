@@ -78,7 +78,7 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
                     if($outputProvider = $this->getOutputProvider($data['type'], $data)) {
                         $outputProvider->setFlexFormProvider($flexFormProvider);
                         $outputProvider->execute();
-                        $this->io->info($flexFormProvider->getContentObjectType() . ' migrated!');
+                        $this->io->info($flexFormProvider->getContentObjectType() . " of type {$data['type']} migrated!");
                     }
 //                }
             }
@@ -233,7 +233,7 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
      * @throws Exception
      */
     protected function migratePageTemplates() {
-        $this->io->section('Working on templates');
+        $this->io->section('Working on page templates');
         foreach (GeneralUtility::getAllFilesAndFoldersInPath([], GeneralUtility::getFileAbsFileName($this->configuration['output']['pages']['fluxTemplateRootPath'])) as $file) {
             $data = $this->getDataFromElement($file);
             /** @var FluxPageToCoreAndMaskMigration $outputProvider */
