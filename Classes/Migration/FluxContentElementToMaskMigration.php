@@ -11,6 +11,7 @@ use MASK\Mask\Utility\TemplatePathUtility;
 use Symfony\Component\DomCrawler\Crawler;
 use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\Exception;
 use TYPO3\CMS\Core\Resource\Exception\ResourceDoesNotExistException;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
@@ -172,7 +173,7 @@ class FluxContentElementToMaskMigration extends FluxMigrationAbstract
             $CType = $this->getFlexFormProvider()->getContentObjectType();
             $connection = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('tt_content');
             $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tt_content');
-            $qb->getRestrictions()->removeAll();
+            $qb->getRestrictions()->removeAll()->add(GeneralUtility::makeInstance(DeletedRestriction::class));
             $keyMap = array_column($configuration['fields'] ?? [], null, 'originalKey');
 
             $sheets = $this->getData()['sheets'] ?? [];

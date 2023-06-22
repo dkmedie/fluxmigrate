@@ -4,6 +4,7 @@ namespace DKM\FluxMigrate\Migration;
 
 use DKM\FluxMigrate\Utility;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\Exception;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
@@ -219,8 +220,7 @@ page {
     {
         $connection = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('tt_content');
         $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
-        $qb->getRestrictions()
-            ->removeAll();
+        $qb->getRestrictions()->removeAll()->add(GeneralUtility::makeInstance(DeletedRestriction::class));
         $pages = $qb->from('pages')
             ->select('*')
             ->orWhere(

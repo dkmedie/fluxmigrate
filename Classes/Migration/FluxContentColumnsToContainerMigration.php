@@ -7,6 +7,7 @@ use DKM\FluxMigrate\Utility\Mask\ElementUtility;
 use Doctrine\DBAL\DBALException;
 use Doctrine\DBAL\Driver\Exception;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class FluxContentColumnsToContainerMigration extends FluxMigrationAbstract
@@ -227,7 +228,7 @@ class FluxContentColumnsToContainerMigration extends FluxMigrationAbstract
 
         $keyMap = array_column($configuration['fields'] ?? [], null, 'originalKey');
 
-        $qb->getRestrictions()->removeAll();
+        $qb->getRestrictions()->removeAll()->add(GeneralUtility::makeInstance(DeletedRestriction::class));
 
         foreach ($qb->from('tt_content')->select('*')->where($qb->expr()->eq('CType', $qb->createNamedParameter($CType)))->execute()->fetchAllAssociative() ?? [] as $element) {
             //Find elements releated to this grid element
