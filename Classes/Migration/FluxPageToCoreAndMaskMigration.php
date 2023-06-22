@@ -76,7 +76,7 @@ page {
             self::class => [
                 GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['backendLayoutPageTSFilePath']) => '',
                 GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['fluidTemplateTSFilePath']) => $pageSetup,
-                GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['newTemplatePath']) => ''
+                GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['newTemplateRootPath']) => ''
 
             ]
         ];
