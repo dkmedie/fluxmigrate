@@ -194,11 +194,11 @@ page {
         // Template content
         foreach (array_keys($this->columnSetup['page'][10]['dataProcessing']) as $colPos) {
 
-            $templateContent = preg_replace('/(.*v:content\.render.*column="' . ($colPos-100) . '".*slide="-1".*)/',
+            $templateContent = preg_replace('/(.*v:content\.render.*column="' . ($colPos-100) . '".*slide="-1".*</v:content\.render>)/s',
                 '  <f:format.raw>{column'  . $colPos . '}</f:format.raw>
 ', $templateContent);
 
-            $templateContent = preg_replace('/(.*v:content\.render.*column="' . ($colPos-100) . '".*)/',
+            $templateContent = preg_replace('/(.*v:content\.render.*column="' . ($colPos-100) . '".*</v:content\.render>)/s)/',
                     '  <f:for each="{column' . ($colPos-100) . '}" as="contentElement">
     <f:cObject typoscriptObjectPath="tt_content.{contentElement.data.CType}" data="{contentElement.data}"
       table="tt_content" />
