@@ -58,7 +58,7 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
 
         $this->io->title($this->getDescription());
         $this->migrateContent();
-//        $this->migratePageTemplates();
+        $this->migratePageTemplates();
 
 
 
@@ -74,13 +74,13 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
         foreach (Core::getRegisteredFlexFormProviders() as $flexFormProvider) {
             if(is_object($flexFormProvider)) {
                 $data = $this->getDataFromElement($flexFormProvider->getTemplatePathAndFilename([]));
-                if($data['type'] == 'sections') {
+//                if($data['type'] == 'sections') {
                     if($outputProvider = $this->getOutputProvider($data['type'], $data)) {
                         $outputProvider->setFlexFormProvider($flexFormProvider);
                         $outputProvider->execute();
                         $this->io->info($flexFormProvider->getContentObjectType() . ' migrated!');
                     }
-                }
+//                }
             }
         }
     }
