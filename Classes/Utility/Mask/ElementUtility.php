@@ -6,10 +6,11 @@ use DKM\FluxMigrate\Utility;
 use MASK\Mask\ConfigurationLoader\ConfigurationLoader;
 use Symfony\Component\Yaml\Yaml;
 use TYPO3\CMS\Core\Exception;
+use TYPO3\CMS\Core\SingletonInterface;
 use TYPO3\CMS\Core\Utility\ArrayUtility;
 use TYPO3\CMS\Core\Utility\StringUtility;
 
-class ElementUtility
+class ElementUtility implements SingletonInterface
 {
     protected ConfigurationLoader $configurationLoader;
 

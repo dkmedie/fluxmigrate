@@ -4,8 +4,10 @@ namespace DKM\FluxMigrate\Migration;
 
 use FluidTYPO3\Flux\Provider\Provider;
 use FluidTYPO3\Flux\Provider\ProviderInterface;
+use TYPO3\CMS\Core\SingletonInterface;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 
-abstract class FluxContentElementMigrationAbstract
+abstract class FluxMigrationAbstract implements SingletonInterface
 {
 
     protected array $data = [];
@@ -16,12 +18,29 @@ abstract class FluxContentElementMigrationAbstract
 
     protected array $outputProviderSettings = [];
 
+    protected array $resetFiles = [];
+
     /**
      * @var Provider
      */
     protected Provider $flexFormProvider;
 
-    abstract public function resetFiles();
+    abstract public function getResetPaths(): array;
+
+    public function initOutputProvider()
+    {
+        if(!array_intersect_key($this->resetFiles, $this->getResetPaths())) {
+            $this->resetFiles = array_merge($this->resetFiles, $this->getResetPaths());
+            $key = key($this->getResetPaths());
+            foreach ($this->getResetPaths()[$key] as $path => $value) {
+                if(pathinfo($path)['extension'] ?? false) {
+                    file_put_contents($path, $value);
+                } else {
+                    GeneralUtility::mkdir_deep($path);
+                }
+            }
+        };
+    }
 
     /**
      * @param $data
@@ -106,13 +125,13 @@ abstract class FluxContentElementMigrationAbstract
     /**
      * @return mixed
      */
-    public function migrateElement()
+    public function execute()
     {
         $configuration = $this->generateConfiguration();
         $this->writeConfiguration($configuration);
         $template = $this->generateFluidTemplateContent($configuration);
         $this->writeFluidTemplate($template);
-        $this->migrateContentElements($configuration);
+        $this->migrateData($configuration);
     }
     abstract protected function generateConfiguration();
     abstract protected function writeConfiguration($configuration);
@@ -131,7 +150,7 @@ abstract class FluxContentElementMigrationAbstract
     abstract protected function getFluidTemplatePath();
     abstract protected function writeFluidTemplate($templateContent);
 
-    abstract public function migrateContentElements($configuration);
+    abstract public function migrateData($configuration);
 
 
 

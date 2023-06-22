@@ -2,7 +2,8 @@
 
 namespace DKM\FluxMigrate\Command;
 
-use DKM\FluxMigrate\Migration\FluxContentElementMigrationAbstract;
+use DKM\FluxMigrate\Migration\FluxMigrationAbstract;
+use DKM\FluxMigrate\Migration\FluxPageToCoreAndMaskMigration;
 use DKM\FluxMigrate\Utility;
 use FluidTYPO3\Flux\Core;
 use Symfony\Component\Console\Input\InputArgument;
@@ -13,11 +14,12 @@ use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\Yaml\Parser;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Exception;
+use TYPO3\CMS\Core\Resource\ResourceFactory;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class MigrateCommand extends \Symfony\Component\Console\Command\Command
 {
-    public $configuration = [];
+    public array $configuration = [];
 
     /**
      * @var SymfonyStyle
@@ -68,27 +70,46 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
      * @throws Exception
      */
     protected function migrateContent() {
+        $this->io->section('Working on templates');
         foreach (Core::getRegisteredFlexFormProviders() as $flexFormProvider) {
             if(is_object($flexFormProvider)) {
                 $data = $this->getDataFromElement($flexFormProvider->getTemplatePathAndFilename([]));
-                if($data['type'] ?? false) {
-                    if($className = $this->configuration['output'][$data['type']]['name'] ?? '') {
-                        if(!class_exists($className)) {
-                            throw new Exception("The class {$className} does not exist!");
-                        }
-                        /** @var FluxContentElementMigrationAbstract $outputProvider */
-                        $outputProvider = GeneralUtility::makeInstance($className);
-                        $outputProvider->setData($data);
+                if($data['type'] == 'sections') {
+                    if($outputProvider = $this->getOutputProvider($data['type'], $data)) {
                         $outputProvider->setFlexFormProvider($flexFormProvider);
-                        $outputProvider->setOutputProviderSettings($this->configuration['output'][$data['type']]);
-                        $typeResetFiles[$data['type']] = $outputProvider->resetFiles($typeResetFiles[$data['type']] ?? false);
-                        $outputProvider->migrateElement();
-                    } else {
-                        throw new Exception("No class name was configured for the type {$data['type']}!");
+                        $outputProvider->execute();
+                        $this->io->info($flexFormProvider->getContentObjectType() . ' migrated!');
                     }
                 }
             }
         }
+    }
+
+    /**
+     * @param $type
+     * @param $data
+     * @return FluxMigrationAbstract
+     * @throws Exception
+     */
+    protected function getOutputProvider($type, $data): ?FluxMigrationAbstract
+    {
+        $outputProvider = null;
+        if($type ?? false) {
+            if($className = $this->configuration['output'][$type]['name'] ?? '') {
+                if(!class_exists($className)) {
+                    throw new Exception("The class {$className} does not exist!");
+                }
+                /** @var FluxMigrationAbstract $outputProvider */
+                $outputProvider = GeneralUtility::makeInstance($className);
+                $outputProvider->setData($data);
+                $outputProvider->setOutputProviderSettings($this->configuration['output'][$type]);
+                $outputProvider->initOutputProvider();
+//                $typeResetFiles[$type] = $outputProvider->getResetFiles($typeResetFiles[$type] ?? false);
+            } else {
+                throw new Exception("No class name was configured for the type {$type}!");
+            }
+        }
+        return $outputProvider;
     }
 
 
@@ -145,9 +166,14 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
                             break;
                         case 'fluidtypo3flux.form.section':
                             $sectionName = $domElement->attr('name');
-                            $elementCfg['sections'][$sectionName]['label'] = $domElement->attr('label');
-                            $domElement->children()->each(function (Crawler $node, $i) use ($sectionName, &$elementCfg) {
-                                $elementCfg['sections'][$sectionName]['fields'][] = $this->getFieldData($node);
+//                            $elementCfg['sections'][$sectionName]['label'] = $domElement->attr('label');
+                            $domElement->children()->each(function (Crawler $objectNode, $objectIndex) use ($sectionName, &$elementCfg) {
+                                $objectName = $objectNode->attr('name');
+                                $objectLabel = $objectNode->attr('label') ?? $objectNode->attr('name');
+                                $elementCfg['sections'][$sectionName][$objectName] = ['name' => $objectName, 'label' => $objectLabel];
+                                $objectNode->children()->each(function (Crawler $node, $i) use ($objectIndex,  $sectionName, $objectName, &$elementCfg) {
+                                    $elementCfg['sections'][$sectionName][$objectName]['fields'][] = $this->getFieldData($node);
+                                });
                             });
                             $types[] = 'sections';
                             break;
@@ -157,10 +183,12 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
                                     $elementCfg['grid']['rows'][$iRow]['columns'][$iColumn] = [
                                         'name' => $nodeColumn->attr('name'),
                                         'colPos' => $nodeColumn->attr('colpos') ?? 0,
+                                        'colspan' => $nodeColumn->attr('colspan'),
                                         'label' => $nodeColumn->attr('label'),
                                         'style' => $nodeColumn->attr('style')
                                     ];
-                                    $elementCfg['grid']['rows'][$iRow]['columns'][$iColumn] = array_filter($elementCfg['grid']['rows'][$iRow]['columns'][$iColumn]);
+                                    // remove empty, false and null values
+                                    $elementCfg['grid']['rows'][$iRow]['columns'][$iColumn] = array_filter($elementCfg['grid']['rows'][$iRow]['columns'][$iColumn], fn($b) => strlen((string)$b));
                                 });
                             });
                             $types[] = 'columns';
@@ -168,6 +196,7 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
                         default:
                             if (str_starts_with($domElement->nodeName(), 'fluidtypo3flux.field')) {
                                 $elementCfg['sheets']['options']['fields'][] = $this->getFieldData($domElement);
+                                $types[] = 'sheets';
                             }
                     }
                 });
@@ -186,6 +215,10 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
             }
         });
 
+        if(isset($elementCfg['sheets']['options'])) {
+            $elementCfg['sheets']['options']['label'] = 'LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:general';
+        }
+
 
         $crawler->filter('typo3fluidfluid\.section[name=Configuration], typo3fluidfluid\.section[name=Preview]')->each(function(Crawler $node) {
            $node = $node->getNode(0);
@@ -196,22 +229,35 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
     }
 
 
-
-
-
-
+    /**
+     * @throws Exception
+     */
     protected function migratePageTemplates() {
-        foreach ($this->configuration['paths']['pageTemplates'] ?? [] as $template) {
-            if($template['migrated'] ?? false) {
-                $this->io->info('Done: ' . GeneralUtility::getFileAbsFileName($template['path']));
-                continue;
-            }
-            $this->io->section('Working on: ' . GeneralUtility::getFileAbsFileName($template['path']));
-            $crawler = new Crawler(file_get_contents(GeneralUtility::getFileAbsFileName($template['path'])));
-            $this->migratePageTemplateFormSheet($crawler);
-            return;
+        $this->io->section('Working on templates');
+        foreach (GeneralUtility::getAllFilesAndFoldersInPath([], GeneralUtility::getFileAbsFileName($this->configuration['output']['pages']['fluxTemplateRootPath'])) as $file) {
+            $data = $this->getDataFromElement($file);
+            /** @var FluxPageToCoreAndMaskMigration $outputProvider */
+            $outputProvider = $this->getOutputProvider('pages', $data);
+            $outputProvider->execute();
+            $this->io->info(pathinfo($file)['basename'] . ' migrated!');
         }
+        if(isset($outputProvider)) {
+            $outputProvider->writeTypoScriptPageSetup();
+        }
+
+        foreach (GeneralUtility::getAllFilesAndFoldersInPath([], GeneralUtility::getFileAbsFileName($this->configuration['output']['pages']['fluxTemplateRootPath'])) as $file) {
+            $data = $this->getDataFromElement($file);
+            /** @var FluxPageToCoreAndMaskMigration $outputProvider */
+            $outputProvider = $this->getOutputProvider('pages', $data);
+            $outputProvider->generateFluidTemplateContentAndWrite();
+        }
+
     }
+
+
+
+
+
 
     /**
      * @param Crawler $crawler
@@ -243,27 +289,4 @@ class MigrateCommand extends \Symfony\Component\Console\Command\Command
         }
         return ['type' => $node->nodeName(), 'attributes' => $attributes];
     }
-
-
-
-
-//    protected function migrateFieldTypeInput(Crawler $node)
-//    {
-//        $attributes = [];
-//        foreach ($node->getNode(0)->attributes as $attribute) {
-//            $attributes[$attribute->nodeName] = $attribute->nodeValue;
-//        }
-//        return ['type' => $node->nodeName(), 'attributes' => $attributes];
-//    }
-//    protected function migrateFieldTypeText(Crawler $node)
-//    {
-//        $attributes = [];
-//        foreach ($node->getNode(0)->attributes as $attribute) {
-//            $attributes[$attribute->nodeName] = $attribute->nodeValue;
-//        }
-//        return ['type' => $node->nodeName(), 'attributes' => $attributes];
-//    }
-
-
-
 }

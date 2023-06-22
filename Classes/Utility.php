@@ -2,6 +2,7 @@
 
 namespace DKM\FluxMigrate;
 
+use Symfony\Component\Yaml\Yaml;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
 use TYPO3\CMS\Core\Database\ConnectionPool;
@@ -10,6 +11,7 @@ use TYPO3\CMS\Core\Exception;
 use TYPO3\CMS\Core\Localization\LanguageService;
 use TYPO3\CMS\Core\Resource\Exception\ResourceDoesNotExistException;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
+use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class Utility
@@ -27,6 +29,14 @@ class Utility
         ['key' => 'v',
             'vendor' => 'FluidTYPO3',
             'name' => 'VHS']
+    ];
+
+    const attributeCaseFixes = [
+        'pageuid' => 'pageUid',
+        'maxwidth' => 'maxWidth',
+        'treatidasreference' => 'treatIdAsReference',
+        'typoscriptobjectpath' => 'typoscriptObjectPath',
+        'cobject' => 'cObject'
     ];
 
     public static function convertXMLToNonNamespace($xml)
@@ -67,7 +77,7 @@ class Utility
 
                 // hotfixes
                 $xml = urldecode($xml);
-                return str_replace(['maxwidth', 'treatidasreference'], ['maxWidth', 'treatIdAsReference'], $xml);
+                return str_replace(array_keys(self::attributeCaseFixes), array_values(self::attributeCaseFixes), $xml);
         }
     }
 
@@ -165,5 +175,231 @@ class Utility
             $test = 1;
             // Handle errors
         }
+
     }
+
+
+    /**
+     * Converts given array to TypoScript
+     *
+     * @param array $typoScriptArray The array to convert to string
+     * @param string $addKey Prefix given values with given key (eg. lib.whatever = {...})
+     * @param integer $tab Internal
+     * @param boolean $init Internal
+     * @return string TypoScript
+     */
+    public static function convertArrayToTypoScript(array $typoScriptArray, $addKey = '', $tab = 0, $init = TRUE)
+    {
+
+        $typoScript = '';
+        if ($addKey !== '') {
+
+            if(
+                ($typoScriptArray['COMMENT'] ?? false) && is_array($typoScriptArray['COMMENT'])
+                ||
+                ($typoScriptArray['TSObject'] ?? false)
+            ) {
+                    $typoScript .= "\n";
+            }
+
+            if(($typoScriptArray['COMMENT'] ?? false) && is_array($typoScriptArray['COMMENT'])) {
+                $maxLength = max(array_map('strlen', $typoScriptArray['COMMENT']));
+                $ruler = str_repeat("\t", ($tab === 0) ? $tab : $tab - 1) . str_pad("", $maxLength + 4, "#" ) . "\n";
+                foreach ($typoScriptArray['COMMENT'] as $index => $comment) {
+                    if($index == 0) {
+                        $typoScript .= $ruler;
+                        $typoScript .= str_repeat("\t", ($tab === 0) ? $tab : $tab - 1) . str_pad("# {$comment}", $maxLength + 3, " " ) . "#\n";
+                        $typoScript .= $ruler;
+                    } else {
+                        $typoScript .= str_repeat("\t", ($tab === 0) ? $tab : $tab - 1) . str_pad("# {$comment}", $maxLength + 3, " " ) . "#\n";                    }
+                }
+                $typoScript .= $ruler;
+                unset($typoScriptArray['COMMENT']);
+            }
+            if($typoScriptArray['TSObject'] ?? false) {
+                $typoScript .= str_repeat("\t", ($tab === 0) ? $tab : $tab - 1) . $addKey . " = {$typoScriptArray['TSObject']}\n";
+                unset($typoScriptArray['TSObject']);
+            }
+
+            $typoScript .= str_repeat("\t", ($tab === 0) ? $tab : $tab - 1) . $addKey . " {\n";
+            if ($init === TRUE) {
+                $tab++;
+            }
+        }
+        $tab++;
+        foreach ($typoScriptArray as $key => $value) {
+            if (!is_array($value)) {
+                if (strpos($value, "\n") === FALSE) {
+                    $typoScript .= str_repeat("\t", ($tab === 0) ? $tab : $tab - 1) . "$key = $value\n";
+                } else {
+                    $typoScript .= str_repeat("\t", ($tab === 0) ? $tab : $tab - 1) . "$key (\n$value\n" . str_repeat("\t", ($tab === 0) ? $tab : $tab - 1) . ")\n";
+                }
+
+            } else {
+                $typoScript .= self::convertArrayToTypoScript($value, $key, $tab, FALSE);
+            }
+        }
+        if ($addKey !== '') {
+            $tab--;
+            $typoScript .= str_repeat("\t", ($tab === 0) ? $tab : $tab - 1) . '}';
+            if ($init !== TRUE) {
+                $typoScript .= "\n";
+            }
+        }
+        return $typoScript;
+    }
+
+    /**
+     * @param $field
+     * @return array
+     */
+    public static function getFlexFormFieldData($field) {
+        $fieldData = [];
+        if ($type = self::getFieldTypeFromXMLData($field)) {
+            switch ($type) {
+                case 'text':
+                    $fieldData[$field['attributes']['name']]['TCEforms'] = [
+                        'label' => $field['attributes']['label'] ?? $field['attributes']['name'],
+                        'config' => ['type' => 'text',
+                            'cols' => 40,
+                            'rows' => 8]
+                    ];
+                    break;
+                case 'input':
+                    $fieldData[$field['attributes']['name']]['TCEforms'] = [
+                        'label' => $field['attributes']['label'] ?? $field['attributes']['name'],
+                        'config' => ['type' => 'input']
+                    ];
+                    if($field['attributes']['config'] ?? false) {
+                        $fieldData[$field['attributes']['name']]['TCEforms']['config'] += Yaml::parse($field['attributes']['config']);
+                    }
+                    break;
+                case 'field':
+                    $test = 1;
+                    break;
+                default:
+                    break;
+            }
+        }
+        return $fieldData;
+    }
+
+    /**
+     * @param $field
+     * @return array|mixed|string|string[]
+     */
+    public static function getFieldTypeFromXMLData($field)
+    {
+        return $field['type'] == 'fluidtypo3flux.field' ? $field['attributes']['type'] : str_replace('fluidtypo3flux.field.', '', $field['type']);
+    }
+
+    /**
+     * @param string $CType
+     * @param string $label
+     * @param string $flexFormConfigurationFilePath
+     * @return string
+     */
+    public static function getCTypeInitializationCode(
+        string $CType,
+        string $label,
+        array $sheets,
+        string $flexFormConfigurationFilePath
+    ): string
+    {
+        $parameters = [$label, $CType , 'textmedia', 'after'];
+        $PHPCode = "
+\TYPO3\CMS\Core\Utility\ExtensionManagementUtility::addTcaSelectItem(
+    'tt_content',
+    'CType',
+    [
+        // title
+        '%s',
+        // plugin signature: extkey_identifier
+        '%s',
+        // icon identifier
+        'content-text',
+    ],
+    '%s',
+    '%s'
+);
+    ";
+
+        $PHPCode = sprintf($PHPCode, ...$parameters);
+
+        if(file_exists(GeneralUtility::getFileAbsFileName($flexFormConfigurationFilePath))) {
+
+
+
+            $PHPCode .= "\n
+            
+            \$GLOBALS['TCA']['tt_content']['types']['{$CType}'] = [
+    'showitem' => '
+        --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:general,
+            --palette--;;general,
+            --palette--;;headers,
+        --div--;LLL:EXT:frontend/Resources/Private/Language/locallang_ttc.xlf:tabs.appearance,
+            --palette--;;frames,
+            --palette--;;appearanceLinks,
+        --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:language,
+            --palette--;;language,
+        --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:access,
+            --palette--;;hidden,
+            --palette--;;access,
+        --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:notes,
+            rowDescription,
+        --div--;LLL:EXT:core/Resources/Private/Language/Form/locallang_tabs.xlf:extended,
+    '
+];            
+            
+\TYPO3\CMS\Core\Utility\ExtensionManagementUtility::addToAllTCAtypes(
+    'tt_content',
+    'pi_flexform;',
+    '{$CType}',
+    'after:palette:general'
+);
+\n";
+
+            $PHPCode .= "// add Flexform
+\TYPO3\CMS\Core\Utility\ExtensionManagementUtility::addPiFlexFormValue(
+    '*',
+    'FILE:{$flexFormConfigurationFilePath}',
+    '{$CType}'
+);";
+
+        }
+        return $PHPCode . "\n\n";
+    }
+
+    /**
+     * @param string $CType
+     * @param string $templateName
+     * @param string $fluidRootPath
+     * @return string
+     */
+    public static function getCTypeTypoScriptCode(string $CType, string $templateName, string $fluidRootPath): string
+    {
+        return "
+lib.contentElement {
+    layoutRootPaths.0  < lib.contentElement.layoutRootPaths.0
+    partialRootPaths.0  < lib.contentElement.partialRootPaths.0
+    templateRootPaths.200 = {$fluidRootPath}/Templates/
+    partialRootPaths.200 = {$fluidRootPath}/Partials/
+    layoutRootPaths.200 = {$fluidRootPath}/Layout/
+}
+tt_content {
+    {$CType} =< lib.contentElement
+    {$CType} {
+        templateName = {$templateName}
+        dataProcessing {
+            10 = TYPO3\CMS\Frontend\DataProcessing\FlexFormProcessor
+            10 {
+                fieldName = pi_flexform
+                as = flexform
+            }
+        }
+    }
+}
+";
+    }
+
 }

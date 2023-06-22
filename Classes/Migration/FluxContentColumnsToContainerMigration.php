@@ -2,45 +2,40 @@
 
 namespace DKM\FluxMigrate\Migration;
 
-use DKM\FluxMigrate\Utility;
 use DKM\FluxMigrate\Utility\Container\ContainerElementUtility;
-use Symfony\Component\DomCrawler\Crawler;
+use DKM\FluxMigrate\Utility\Mask\ElementUtility;
+use Doctrine\DBAL\DBALException;
+use Doctrine\DBAL\Driver\Exception;
 use TYPO3\CMS\Core\Database\ConnectionPool;
-use TYPO3\CMS\Core\Resource\Exception\ResourceDoesNotExistException;
-use TYPO3\CMS\Core\Resource\ResourceFactory;
-use TYPO3\CMS\Core\Utility\ArrayUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Core\Utility\StringUtility;
 
-class FluxContentColumnsToContainerMigration extends FluxContentElementMigrationAbstract
+class FluxContentColumnsToContainerMigration extends FluxMigrationAbstract
 {
 
     /**
-     * @param bool $doNotResetFiles
-     * @return bool
+     * @return array[]
      */
-    public function resetFiles(bool $doNotResetFiles = false): bool
+    public function getResetPaths(): array
     {
-        if (!$doNotResetFiles) {
-            file_put_contents(
-                \TYPO3\CMS\Core\Utility\GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['TCAOverrideFilePath']),
-                "<?php\n"
-            );
-            file_put_contents(
-                \TYPO3\CMS\Core\Utility\GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['typoScriptSetupFilePath']),
-                ""
-            );
-        }
-        return true;
+        return [
+            self::class => [
+                \TYPO3\CMS\Core\Utility\GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['TCAOverrideFilePath']) => "<?php\n",
+                \TYPO3\CMS\Core\Utility\GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['typoScriptSetupFilePath']) => "",
+                \TYPO3\CMS\Core\Utility\GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['containerRootPath']) =>  "",
+                \TYPO3\CMS\Core\Utility\GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['flexFormConfigurationPath']) => "",
+            ]
+        ];
     }
 
-    protected function generateConfiguration()
+
+
+    /**
+     * @return array
+     */
+    protected function generateConfiguration(): array
     {
         $configuration = [];
         $maxColumns = 0;
-
-
-        $this->getFlexFormProvider()->getContentObjectType();
 
         // CType
         $configuration['element']['id'] = $this->getData()['element']['id'];
@@ -77,11 +72,13 @@ class FluxContentColumnsToContainerMigration extends FluxContentElementMigration
                 }
             }
         }
-
-// TODO Get field data
-        foreach ($this->getData()['sheets']['options'] ?? [] as $fieldKey => $field) {
-
-        }
+//        $configuration['fields'] = [];
+//        foreach ($this->getData()['sheets'] ?? [] as $sheetKey =>  $sheetData) {
+//            foreach ($sheetData['fields'] ?? [] as $field) {
+//                $type = $field['type'] == 'fluidtypo3flux.field' ? $field['attributes']['type'] : str_replace('fluidtypo3flux.field.', '', $field['type']);
+//                $configuration['fields'][] = $this->elementUtility->getElementField($this->getFlexFormProvider()->getContentObjectType(), $type, $field['attributes']);
+//            }
+//        }
 
 
         return $configuration;
@@ -89,6 +86,10 @@ class FluxContentColumnsToContainerMigration extends FluxContentElementMigration
         // TODO: Implement generateConfiguration() method.
     }
 
+    /**
+     * @param $configuration
+     * @return void
+     */
     protected function writeConfiguration($configuration)
     {
         $CType = 'container_' . $configuration['element']['id'];
@@ -119,7 +120,7 @@ class FluxContentColumnsToContainerMigration extends FluxContentElementMigration
         $typoScriptCode = ContainerElementUtility::getContainerElementTypoScriptCode(
             $CType,
             $this->getFlexFormProvider()->getPluginName(),
-            $this->getOutputProviderSettings()['fluidRootPath'],
+            $this->getOutputProviderSettings()['containerRootPath'],
             $configuration['columns']
         );
 
@@ -133,18 +134,23 @@ class FluxContentColumnsToContainerMigration extends FluxContentElementMigration
         // TODO: Implement writeConfiguration() method.
     }
 
+    /**
+     * @param $path
+     * @param $sheets
+     * @return void
+     */
     private function createFlexFormDefinition($path, $sheets)
     {
         $xmlArray = [];
         foreach ($sheets as $sheetKey => $sheetData) {
             $xmlArray['sheets'][$sheetKey]['ROOT'] = ['type' => 'array',
                 'el' => []];
-            $sheetRoot = &$xmlArray['sheets'][$sheetKey]['ROOT'];
+            $sheetRoot = &$xmlArray['sheets'][$sheetKey]['ROOT']['el'];
             foreach ($sheetData['fields'] as $field) {
                 if ($type = array_slice(explode('.', $field['type'], 3), 2)[0] ?? '') {
                     switch ($type) {
                         case 'text':
-                            $sheetRoot['el'][$field['attributes']['name']]['TCEforms'] = [
+                            $sheetRoot[$field['attributes']['name']]['TCEforms'] = [
                                 'label' => $field['attributes']['label'] ?? $field['attributes']['name'],
                                 'config' => ['type' => 'text',
                                     'cols' => 40,
@@ -152,7 +158,7 @@ class FluxContentColumnsToContainerMigration extends FluxContentElementMigration
                             ];
                             break;
                         case 'input':
-                            $sheetRoot['el'][$field['attributes']['name']]['TCEforms'] = [
+                            $sheetRoot[$field['attributes']['name']]['TCEforms'] = [
                                 'label' => $field['attributes']['label'] ?? $field['attributes']['name'],
                                 'config' => ['type' => 'input']
                             ];
@@ -173,6 +179,10 @@ class FluxContentColumnsToContainerMigration extends FluxContentElementMigration
         // TODO: Implement getConfigurationPath() method.
     }
 
+    /**
+     * @param $configuration
+     * @return string
+     */
     protected function generateFluidTemplateContent($configuration)
     {
         $templateContent = $this->getData()['templateContent'];
@@ -187,7 +197,7 @@ class FluxContentColumnsToContainerMigration extends FluxContentElementMigration
 </f:for>', $templateContent);
         }
 
-        return $templateContent;
+        return (string)$templateContent;
     }
 
     protected function getFluidTemplatePath()
@@ -198,7 +208,7 @@ class FluxContentColumnsToContainerMigration extends FluxContentElementMigration
     protected function writeFluidTemplate($templateContent)
     {
         file_put_contents(
-            GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['templatePath'] . "/" . $this->getFlexFormProvider()->getPluginName()) . '.html',
+            GeneralUtility::getFileAbsFileName($this->getOutputProviderSettings()['containerRootPath'] . '/Templates/' . $this->getFlexFormProvider()->getPluginName()) . '.html',
             $templateContent
         );
     }
@@ -206,8 +216,10 @@ class FluxContentColumnsToContainerMigration extends FluxContentElementMigration
     /**
      * @param $configuration
      * @return void
+     * @throws DBALException
+     * @throws Exception
      */
-    public function migrateContentElements($configuration)
+    public function migrateData($configuration)
     {
         $CType = $this->getFlexFormProvider()->getContentObjectType();
         $connection = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('tt_content');
@@ -215,19 +227,20 @@ class FluxContentColumnsToContainerMigration extends FluxContentElementMigration
 
         $keyMap = array_column($configuration['fields'] ?? [], null, 'originalKey');
 
-        foreach ($connection->select(['*'], 'tt_content', ['CType' => $CType])->fetchAllAssociative() ?? [] as $element) {
+        $qb->getRestrictions()->removeAll();
+
+        foreach ($qb->from('tt_content')->select('*')->where($qb->expr()->eq('CType', $qb->createNamedParameter($CType)))->execute()->fetchAllAssociative() ?? [] as $element) {
             //Find elements releated to this grid element
             $inContainerElements = $qb->from('tt_content')->select('*')->where(
                 $qb->expr()->gte('colPos', $qb->createNamedParameter("{$element['uid']}00")),
                 $qb->expr()->lte('colPos', $qb->createNamedParameter("{$element['uid']}99"))
             )->execute()->fetchAllAssociative();
             foreach ($inContainerElements as $inContainerElement) {
-                list($tx_container_parent, $colPos) = str_split($inContainerElement['colPos'], 4);
+                list($tx_container_parent, $colPos) = str_split($inContainerElement['colPos'], strlen($inContainerElement['colPos']) - 2);
                 $colPos = (int)$colPos + 200;
                 $connection->update('tt_content', ['tx_container_parent' => $tx_container_parent, 'colPos' => $colPos], ['uid' => $inContainerElement['uid']]);
             }
-            $update = ['CType' => 'container_' . $configuration['element']['id']];
-            $connection->update('tt_content', $update, ['uid' => $element['uid']]);
+            $connection->update('tt_content', ['CType' => 'container_' . $configuration['element']['id']], ['uid' => $element['uid']]);
         }
     }
 }
