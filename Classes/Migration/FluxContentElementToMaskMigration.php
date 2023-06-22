@@ -180,7 +180,7 @@ class FluxContentElementToMaskMigration extends FluxMigrationAbstract
                 $sheets['options'] = ['fields' => $this->getData()['fields']];
             }
 
-            foreach ($qb->from('tt_content')->select(['*'])->where($qb->expr()->eq('CType', $qb->createNamedParameter($CType)))->execute()->fetchAllAssociative() ?? [] as $element) {
+            foreach ($qb->from('tt_content')->select('*')->where($qb->expr()->eq('CType', $qb->createNamedParameter($CType)))->execute()->fetchAllAssociative() ?? [] as $element) {
                 $crawler = new Crawler($element['pi_flexform']);
                 $update = ['CType' => 'mask_' . $configuration['element']['key']];
                 foreach ($sheets ?? [] as $sheetKey => $sheetData) {
