@@ -190,7 +190,7 @@ class FluxContentColumnsToContainerMigration extends FluxMigrationAbstract
         // Template content
         foreach ($configuration['columns'] as $name => $colPos) {
 
-            $templateContent = preg_replace('/(<flux:content.render.*area="' . $name . '".*/>)/',
+            $templateContent = preg_replace('/(<flux:content.render\s+area="' . $name . '"(.*?)<\/flux:content.render>)/s',
                 '<f:for each="{children_' . $colPos . '}" as="record">
     <f:format.raw>
         {record.renderedContent}
